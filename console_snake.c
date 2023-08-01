@@ -18,7 +18,7 @@ init :
             char pressed_key = getchar();
             switch (pressed_key) {
                 case CTRL_PAUSE_RESUME : {
-                    pause = ~pause;
+                    pause = !pause;
                     if (pause) {
                         printf("Pause\n");
                         // wait for "CTRL_PAUSE_RESUME" | "CTRL_PAUSE_RESUME" key to be pressed
