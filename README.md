@@ -1,5 +1,7 @@
 # Console Snake
 
+![Console Snake game](screenshot.png)
+
 Console Snake is a simple snake game written in C for Posix platforms.
 
 It allows users to play the classical snake game directly in the terminal. It uses ASCII characters for rendering and user input.

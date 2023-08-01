@@ -1,116 +1,164 @@
-
 #include "console_snake.h"
 
 Queue snake;
-
-size_t score = 0;
-size_t apple_count = 0;
+size_t score;
+size_t apple_count;
 
 int main() 
 {
-    disable_input_buffering();
-    signal(SIGINT, &restore_terminal_attr); // Handle SIGINT interrupt, 
-                                            // sent by  "CTRL + C" for example
-    init_board();
+    init_rendering();
+init :    
+    init_game();
     bool close = false;
     bool pause = false;
-    while (!close) {         
-        render_board();
+    snake_state_t state = SNAKE_LIVE;
+    while (!close) {     
+        render_game();
         if (is_key_pressed()) {
             char pressed_key = getchar();
             switch (pressed_key) {
                 case CTRL_PAUSE_RESUME : {
-                            pause = ~pause;
-                            if (pause) {
-                                while (!is_key_pressed() || getchar() != CTRL_PAUSE_RESUME)
-                                    ;
-                                printf("Pause");
-                            }
-                            break;
-                        }
+                    pause = ~pause;
+                    if (pause) {
+                        printf("Pause\n");
+                        // wait for "CTRL_PAUSE_RESUME" | "CTRL_PAUSE_RESUME" key to be pressed
+                        while (!is_key_pressed() || ((pressed_key = getchar()) != CTRL_PAUSE_RESUME && pressed_key != CTRL_QUIT))
+                            ;
+                        close = (pressed_key == CTRL_QUIT);
+                    }
+                    break;
+                }
                 case CTRL_QUIT : {
-                            close = true;
-                            break;
-                        }
+                    close = true;
+                    break;
+                }
                 case CTRL_RIGHT : {
-                            if (!move_right()) {
-                                printf("You lose\n");
-                                close = true;
-                            }
-                            break;    
-                        }
+                    state = move_right();
+                    break;    
+                }
                 case CTRL_UP : {
-                            if (!move_up()) {
-                            printf("You lose\n");
-                            close = true;
-                        }
-                        break;
-                        }
+                    state = move_up(); 
+                    break;
+                }
                 case CTRL_LEFT : {
-                            if (!move_left()) {
-                                printf("You lose\n");
-                                close = true;
-                            }
-                            break;
-                        }
+                    state = move_left();
+                    break;
+                }
                 case CTRL_DOWN : {
-                            if (!move_down()) {
-                                printf("You lose\n");
-                                close = true;
-                            }
-                            break;
-                        }   
-                default : {
-                            render_board();
-                            printf("Invalid entry\n");
-                        }     
+                    state = move_down();
+                    break;
+                }      
             }
         } else {
-            // keep moving according to the last set direction
-            if (!move_snake_by(dir_x, dir_y)) {
-                printf("You lose\n");
-                close = true;
-            }
+            // keep moving in the last set direction
+            state = move_snake_by(dir_x, dir_y);
         }
+
+        if (state == SNAKE_LIVE)
+            continue;
+        
+        // handle end of the game
+        if (state == SNAKE_DEAD) {
+            printf(IN_RED_COLOR "Oops! You lose! Try again\n" RESET_COLOR);     
+        } else if (state == SNAKE_FULL) {
+            printf(IN_GREEN_COLOR "Congratulation! You win\n" RESET_COLOR);
+        }
+        printf("Press 'Enter key' to play again or '%c' to leave\n", CTRL_QUIT);
+
+        char pressed_key;
+        // wait for "CTRL_QUIT" or "Enter " key to be pressed
+        while (!is_key_pressed() || ((pressed_key = getchar()) != CTRL_QUIT && pressed_key != '\n')) 
+            ;
+        if (pressed_key == '\n')
+            goto init;
+        // pressed_key == CTRL_QUIT    
+        close = true;    
     }
 
-    restore_terminal_attr(0);
+    close_game();
+    close_rendering();
 
     return 0;
 }
 
-void print_usage(void)
-{
-    printf("Press '%c' to move up \n", CTRL_UP);
-    printf("Press '%c' to move down \n", CTRL_DOWN);
-    printf("Press '%c' to move left \n", CTRL_LEFT);
-    printf("Press '%c' to move right \n", CTRL_RIGHT);
+/*     Game rendering functions     */
 
-    printf("Press '%c' to pause/resume \n", CTRL_PAUSE_RESUME);
-    printf("Press '%c' to quit \n",        CTRL_QUIT);
+void init_rendering(void)
+{
+    init_terminal();
+    // Handle SIGINT interrupt, sent by  "CTRL + C" by example
+    // TOGO : replace with sigaction() for POSIX portability
+    signal(SIGINT, &emergency_close); 
 }
 
-/*                Board                  */
-
-void init_board(void) 
+void emergency_close(int signal)
 {
-    srand(time(NULL));    
+    (void) signal;
+    close_game();
+    close_rendering();
+}
 
+void close_rendering(void)
+{
+    restore_terminal();
+}
+
+void init_game(void) 
+{    
+    // choose board dimension
     width  = MAX_WIDTH;
-    height = MAX_HEIGHT; 
-    for (size_t y = 0; y < height && y < MAX_HEIGHT; y++) 
-        for (size_t x = 0; x < width && x < MAX_WIDTH; x++)        
-            CELL_AT(x, y) = EMPTY_ASCII;
-
-    // init snake position 
-    push_front(&snake, /*rand() % width*/0, /*rand() % height*/0);
-     
+    height = MAX_HEIGHT;
+    init_board();
+    // init the random number generator seed with current time        
+    srand(time(NULL));   
+    init_snake_position();
+    init_snake_direction();
+    // init score and apple count
+    score = 0;
+    apple_count = 0;
     generate_apple();
 
+}
+
+void close_game(void)
+{
+    delete_queue(&snake);
+
+}
+
+// fill the board with "ASCII_RENDER_EMPTY" character 
+void init_board(void)
+{
+    for (size_t y = 0; y < height && y < MAX_HEIGHT; y++) 
+        for (size_t x = 0; x < width && x < MAX_WIDTH; x++)        
+            CELL_AT(x, y) = ASCII_RENDER_EMPTY;
+}
+
+void init_snake_position(void)
+{
+    // the snake must me empty
+    if (!is_queue_empty(snake)) 
+        delete_queue(&snake);
+
+    int head_x = rand() % width;
+    int head_y = rand() % height;
+
+    push_front(&snake, head_x, head_y);
+}
+
+void init_snake_direction(void)
+{
     // init direction
     int dir = rand() % DIR_COUNT;
     dir_x = dx[dir];  
     dir_y = dy[dir];
+
+    // the first move should not be a losing move
+    if (!is_safe_move(snake.head->x + dir_x, snake.head->y + dir_y)) {
+        // choose the opposite direction
+        dir_x = -dir_x;
+        dir_y = -dir_y;
+    }
 }
 
 // TODO : optimize the generation
@@ -122,10 +170,10 @@ bool generate_apple(void)
         do {
             apple_pos = rand() % (width * height);
             try_cnt--;
-        } while (try_cnt  && board[apple_pos] == SNAKE_ASCII);
+        } while (try_cnt  && board[apple_pos] == ASCII_RENDER_SNAKE);
         
         if (try_cnt != 0) {
-            board[apple_pos] = APPLE_ASCII;
+            board[apple_pos] = ASCII_RENDER_APPLE;
             apple_count = 1;
             return true;
         }
@@ -133,91 +181,101 @@ bool generate_apple(void)
     return false;
 }
 
+void render_game(void)
+{
+    // reset the terminal using ANSI escape sequence "\033c"
+    printf("\033c");
+    fflush(stdout);
+
+    printf("score:%20zu\n", score);
+    printf("===========================\n");
+    generate_apple(); 
+    render_board();
+    print_usage(); 
+} 
+
 void render_board(void)
 {
-    // ANSI escape sequence for clearing the screen
-    printf("\033[2J"); 
-    // ANSI escape sequence for positioning the cursor at the beginning 
-    printf("\033[H"); 
-
-    printf("score = %5zu \n", score);
-    printf("====================\n");
-    generate_apple();
     for (size_t y = 0; y < height && y < MAX_HEIGHT; y++) {
-        for (size_t x = 0; x < width && y < MAX_WIDTH; x++) 
+        putchar(' ');
+        for (size_t x = 0; x < width && x < MAX_WIDTH; x++) 
             putchar(CELL_AT(x, y));
         putchar('\n');
     }
-    printf("\n====================\n");
-    print_usage();
-    fflush(stdout);
-} 
-
-bool is_valid_move(int next_x, int next_y)
-{
-    return (0 <= next_x  && (size_t)next_x < width  && 
-            0 <= next_y && (size_t)next_y < height  && 
-            CELL_AT(next_x, next_y) !=  SNAKE_ASCII   ); 
 }
 
-bool move_snake_by(int dx, int dy)
+void print_usage(void)
+{
+    printf("\n===========================\n");
+    printf("          USAGE\n");
+    printf("Press '%c' to move up\n", CTRL_UP);
+    printf("Press '%c' to move down\n", CTRL_DOWN);
+    printf("Press '%c' to move left\n", CTRL_LEFT);
+    printf("Press '%c' to move right\n", CTRL_RIGHT);
+
+    printf("Press '%c' to pause/resume\n", CTRL_PAUSE_RESUME);
+    printf("Press '%c' to quit\n",        CTRL_QUIT);
+    printf("===========================\n");
+}
+
+/*       Snake move functions      */
+
+bool is_safe_move(int next_x, int next_y)
+{
+    return (0 <= next_x && (size_t)next_x < width   && 
+            0 <= next_y && (size_t)next_y < height  && 
+            CELL_AT(next_x, next_y) !=  ASCII_RENDER_SNAKE   ); 
+}
+
+snake_state_t move_snake_by(int dx, int dy)
 {  
-    // save the set direction
+    // save direction
     dir_x        = dx ;
     dir_y        = dy ;
-    if (is_valid_move(snake.head->x + dx, snake.head->y + dy)) {   
-
-        if (CELL_AT(snake.head->x + dx, snake.head->y +dy) == APPLE_ASCII) {
+    if (is_safe_move(snake.head->x + dx, snake.head->y + dy)) {   
+        if (CELL_AT(snake.head->x + dx, snake.head->y +dy) == ASCII_RENDER_APPLE) {
             // update score
             score++; 
             apple_count = 0;
             // update snake's head
             push_front(&snake, snake.head->x + dx, snake.head->y + dy);
-            CELL_AT(snake.head->x, snake.head->y) = SNAKE_ASCII;
+            CELL_AT(snake.head->x, snake.head->y) = ASCII_RENDER_SNAKE;
         } else {
             // update snake's head
             push_front(&snake, snake.head->x + dx, snake.head->y + dy);
-            CELL_AT(snake.head->x, snake.head->y) = SNAKE_ASCII;
+            CELL_AT(snake.head->x, snake.head->y) = ASCII_RENDER_SNAKE;
             // update snake's tail
-            CELL_AT(snake.tail->x, snake.tail->y) = EMPTY_ASCII;
+            CELL_AT(snake.tail->x, snake.tail->y) = ASCII_RENDER_EMPTY;
             pop_back(&snake);
         }
-
-        render_board();
-
-        if (snake.size == width * height) {
-            printf("You win \n");
-            // return enum 
-        } 
-
-        return true;
+        if (snake.size == width * height) 
+            return SNAKE_FULL;
+        return SNAKE_LIVE;
     } 
-    return false;
+    return SNAKE_DEAD;
 }
 
-bool move_right(void)
+snake_state_t move_right(void)
 {
     return move_snake_by(+1, 0);
 }
 
-bool move_up(void)
+snake_state_t move_up(void)
 {
     return move_snake_by(0, -1);
 }
 
-bool move_left(void)
+snake_state_t move_left(void)
 {
     return move_snake_by(-1, 0);
 }
 
-bool move_down(void)
+snake_state_t move_down(void)
 {
     return move_snake_by(0, +1);
 }
 
-
-/*                Queue                  */
-
+/*          Queue functions               */
 
 struct node * make_node(int x, int y)
 {
@@ -251,6 +309,7 @@ void push_back(Queue *q, int x, int y)
         n->previous = q->tail;
         q->tail = n;
     }
+
     q->size++;
 }
 
@@ -264,6 +323,7 @@ void pop_back(Queue *q)
         else 
             tmp->next = NULL;
         q->tail = tmp;
+
         q->size--;
     }
 }
@@ -278,6 +338,7 @@ void push_front(Queue *q, int x, int y)
         n->next = q->head;
         q->head = n;
     }
+
     q->size++;
 }
 
@@ -291,6 +352,7 @@ void pop_front(Queue *q)
         else
             tmp->previous = NULL;
         q->head = tmp;   
+
         q->size--; 
     }
 }
@@ -301,20 +363,26 @@ void delete_queue(Queue *q)
         pop_back(q);    
 }
 
-/*        TERMINAL         */
+/*        Terminal input functions         */
+struct termios  saved_attributes = {0};
 
-void disable_input_buffering(void)
+void init_terminal(void)
 {
+    // save initial terminal attributes 
     int res = tcgetattr(STDIN_FILENO, &saved_attributes);
     if (res == -1) { 
        perror("tcgetattr : ");
        exit(1);
     }
-    struct termios new_attributes = saved_attributes;
-    
-    // disable the echo and canon 
 
+    struct termios new_attributes = saved_attributes;
+    // - do not echo input characters and
+    // - disable canonical mode
+    // "In noncanonical mode input is available immediately  (without  the  user
+    //   having  to type a line-delimiter character)" man page termios, release 4.15
     new_attributes.c_lflag &= ~(ECHO | ICANON);
+    
+    // apply the new attributes 
     res = tcsetattr(STDIN_FILENO, TCSANOW, &new_attributes); 
     if (res == -1) {
        perror("tcsetattr : ");
@@ -322,16 +390,15 @@ void disable_input_buffering(void)
     }
 }
 
-void restore_terminal_attr(int signal) 
+void restore_terminal(void) 
 {
-    (void) signal;
+    // restore initial terminal attributes 
     tcsetattr(STDIN_FILENO, TCSANOW, &saved_attributes);   
-    delete_queue(&snake);
     exit(0);
 }
 
-/* wait for maximum 1 sec until a key is pressed
- * return true when a key was pressed and
+/* wait for maximum 1 sec for a key to be pressed
+ * return true when a key is pressed and
  *        false otherwise
  */
 bool is_key_pressed(void)
