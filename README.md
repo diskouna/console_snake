@@ -19,7 +19,7 @@ $ git clone https://github.com/diskouna/console_snake.git
  
 ```console
 $ cd console_snake
-$ clang -Wall -Wextra -Werror -std=c11  console_snake.c -o console_snake && ./console_snake
+$ clang -Wall -Wextra -Werror -O2 -std=c11  console_snake.c -o console_snake && ./console_snake
 ```
 If you have "make", you can just run : 
 ```console
