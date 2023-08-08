@@ -410,7 +410,7 @@ void restore_terminal(void)
     tcsetattr(STDIN_FILENO, TCSANOW, &saved_attributes);   
 }
 
-/* wait for maximum 1 sec for a key to be pressed
+/* wait for maximum @timeout for a key to be pressed
  * return true when a key is pressed and
  *        false otherwise
  */
