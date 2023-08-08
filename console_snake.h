@@ -80,7 +80,7 @@ void init_board(void);
 void render_board(void);
 void init_snake_position(void);
 void init_snake_direction(void);
-bool generate_apple(void);
+void generate_apple(void);
 void print_usage(void);
 
 /*        Directions         */

@@ -21,7 +21,7 @@ init :
                     pause = !pause;
                     if (pause) {
                         printf("Pause\n");
-                        // wait for "CTRL_PAUSE_RESUME" | "CTRL_PAUSE_RESUME" key to be pressed
+                        // wait for "CTRL_PAUSE_RESUME" | "CTRL_QUIT" key to be pressed
                         while (!is_key_pressed() || ((pressed_key = getchar()) != CTRL_PAUSE_RESUME && pressed_key != CTRL_QUIT))
                             ;
                         close = (pressed_key == CTRL_QUIT);
@@ -87,7 +87,6 @@ void init_rendering(void)
 {
     init_terminal();
     // Handle SIGINT interrupt, sent by  "CTRL + C" by example
-    // TOGO : replace with sigaction() for POSIX portability
     signal(SIGINT, &emergency_close); 
 }
 
@@ -123,20 +122,19 @@ void init_game(void)
 void close_game(void)
 {
     delete_queue(&snake);
-
 }
 
 // fill the board with "ASCII_RENDER_EMPTY" character 
 void init_board(void)
 {
-    for (size_t y = 0; y < height && y < MAX_HEIGHT; y++) 
-        for (size_t x = 0; x < width && x < MAX_WIDTH; x++)        
+    for (size_t y = 0; y < height; y++) 
+        for (size_t x = 0; x < width; x++)        
             CELL_AT(x, y) = ASCII_RENDER_EMPTY;
 }
 
 void init_snake_position(void)
 {
-    // the snake must me empty
+    // the snake must be empty
     if (!is_queue_empty(snake)) 
         delete_queue(&snake);
 
@@ -161,24 +159,41 @@ void init_snake_direction(void)
     }
 }
 
-// TODO : optimize the generation
-bool generate_apple(void) 
+
+void generate_apple(void) 
 {
     if (apple_count == 0) {
-        size_t apple_pos; 
-        int try_cnt = 5;   
+        // Try @attemp_cnt guesses to find 
+        // an empty cell for placing an apple  
+        size_t apple_pos_x, apple_pos_y; 
+        int attempt_cnt = 10;   
         do {
-            apple_pos = rand() % (width * height);
-            try_cnt--;
-        } while (try_cnt  && board[apple_pos] == ASCII_RENDER_SNAKE);
+            apple_pos_x = rand() % width;
+            apple_pos_y = rand() % height;
+            attempt_cnt--;
+        } while (attempt_cnt > 0 && CELL_AT(apple_pos_x, apple_pos_y) == ASCII_RENDER_SNAKE);
         
-        if (try_cnt != 0) {
-            board[apple_pos] = ASCII_RENDER_APPLE;
-            apple_count = 1;
-            return true;
+        if (attempt_cnt != 0) {
+            /*We found an empty space*/
+            CELL_AT(apple_pos_x, apple_pos_y) = ASCII_RENDER_APPLE;
+        } else { 
+            /* We fail to correctly guess*/
+            // We traverse the whole board to find a random empty cell
+            size_t empty_cells_count = (width * height) - snake.size;
+            size_t empty_cell_pos = rand() % empty_cells_count;
+
+            for (size_t y = 0; y < height; y++) {
+                for (size_t x = 0; x < width; x++) {
+                    if (CELL_AT(x, y) == ASCII_RENDER_EMPTY) empty_cell_pos--;
+                    if (empty_cell_pos == 0) {
+                        CELL_AT(x, y) = ASCII_RENDER_APPLE;
+                        break;
+                    }
+                } 
+            }
         }
+        apple_count = 1;
     }
-    return false;
 }
 
 void render_game(void)
@@ -372,7 +387,7 @@ void init_terminal(void)
     int res = tcgetattr(STDIN_FILENO, &saved_attributes);
     if (res == -1) { 
        perror("tcgetattr : ");
-       exit(1);
+       exit(EXIT_FAILURE);
     }
 
     struct termios new_attributes = saved_attributes;
@@ -386,7 +401,7 @@ void init_terminal(void)
     res = tcsetattr(STDIN_FILENO, TCSANOW, &new_attributes); 
     if (res == -1) {
        perror("tcsetattr : ");
-       exit(1);
+       exit(EXIT_FAILURE);
     }
 }
 
@@ -394,7 +409,6 @@ void restore_terminal(void)
 {
     // restore initial terminal attributes 
     tcsetattr(STDIN_FILENO, TCSANOW, &saved_attributes);   
-    exit(0);
 }
 
 /* wait for maximum 1 sec for a key to be pressed
@@ -406,6 +420,6 @@ bool is_key_pressed(void)
     fd_set readfds;
     FD_ZERO(&readfds);
     FD_SET(STDIN_FILENO, &readfds);
-    struct timeval timeout = {.tv_sec = 1, .tv_usec = 0};
+    struct timeval timeout = {.tv_sec = 0, .tv_usec = 500000};
     return (select(STDIN_FILENO+1, &readfds, NULL, NULL, &timeout) == 1);
 }
