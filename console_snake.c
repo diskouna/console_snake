@@ -159,7 +159,6 @@ void init_snake_direction(void)
     }
 }
 
-
 void generate_apple(void) 
 {
     if (apple_count == 0) {
@@ -180,7 +179,7 @@ void generate_apple(void)
             /* We fail to correctly guess*/
             // We traverse the whole board to find a random empty cell
             size_t empty_cells_count = (width * height) - snake.size;
-            size_t empty_cell_pos = rand() % empty_cells_count;
+            size_t empty_cell_pos = rand() % empty_cells_count + 1;
 
             for (size_t y = 0; y < height; y++) {
                 for (size_t x = 0; x < width; x++) {
